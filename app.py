@@ -1,42 +1,32 @@
-from flask import Flask, request, jsonify, render_template
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-import torch
+from flask import Flask, render_template, request
+from groq import Groq
 
 app = Flask(__name__)
 
-MODEL_NAME = "distilgpt2"
-device = 0 if torch.cuda.is_available() else -1
+# তোমার Groq API Key এখানে বসাও
+client = Groq(api_key="YOUR_GROQ_API_KEY")
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(MODEL_NAME)
-
-generator = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    device=device,
-    framework="pt"
-)
-
-SYSTEM_PROMPT = "তুমি এখন সহায়ক বাংলা চ্যাটবট। সংক্ষিপ্ত এবং পরিষ্কার উত্তর দাও।"
-
-def generate_reply(user_input, max_length=150, temperature=0.7):
-    prompt = f"{SYSTEM_PROMPT}\nUser: {user_input}\nBot:"
-    out = generator(prompt, max_length=max_length, temperature=temperature, do_sample=True, num_return_sequences=1)
-    text = out[0]["generated_text"]
-    reply = text.split("Bot:")[-1].strip()
-    return reply
-
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
-    return render_template("index.html")
+    user_input = ""
+    ai_response = ""
+    
+    if request.method == "POST":
+        user_input = request.form.get("user_message")
+        
+        try:
+            # Groq API-তে কল পাঠানো হচ্ছে
+            completion = client.chat.completions.create(
+                model="deepseek-r1-distill-llama-70b",
+                messages=[
+                    {"role": "user", "content": user_input}
+                ]
+            )
+            ai_response = completion.choices[0].message.content
+        except Exception as e:
+            ai_response = f"Error: {str(e)}"
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    data = request.get_json()
-    user_input = data.get("input", "")
-    reply = generate_reply(user_input)
-    return jsonify({"reply": reply})
+    return render_template("index.html", prompt=user_input, response=ai_response)
 
 if __name__ == "__main__":
     app.run(debug=True)
